@@ -1,0 +1,30 @@
+[package]
+name = "vyde-core"
+description = "The native auth flow and its domain types, with no terminal and no HTTP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+legacy-auth-tests = []
+
+[lib]
+name = "vyde_core"
+path = "src/lib.rs"
+
+[dependencies]
+# The core stays independent of the terminal, network and socket implementations.
+serde = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Only for `#[tokio::test]` and for asserting the wire shape round-trips. Not normal dependencies:
+# the flow itself is async, but nothing in `core` needs a runtime, and adding one to the lib would
+# mean the crate could only be used inside one.
+tokio = { workspace = true }
+# To prove the protocol's JSON actually round-trips. The channel's whole value is that both sides can
+# be deployed separately, which is only true if the serialised form is tested.
+async-trait = { workspace = true }

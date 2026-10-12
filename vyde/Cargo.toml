@@ -1,0 +1,46 @@
+[package]
+name = "vyde-cli"
+description = "Terminal client for Vyde: the HTTP adapter and the terminal interface, wired together"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "vyde"
+path = "src/main.rs"
+
+[dependencies]
+# The flow and its domain types, with no terminal and no HTTP.
+vyde-core = { path = "../core" }
+
+# The two adapters.
+reqwest = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+urlencoding = { workspace = true }
+rand = { workspace = true }
+
+# The kernel keyring, for holding the session token.
+#
+# This is the OS's own cryptographic store, and it is the right one for a credential with a short
+# life: it needs no daemon, nothing is written to disk in the clear, and the session keyring is
+# destroyed when the session ends — so a token in it cannot outlive the login that produced it.
+# `keyring` (the Secret Service one) would persist it encrypted under a login keyring, which is what
+# you want for a long-lived API key and not what you want for "signed in for this terminal".
+keyutils = { version = "0.4", optional = true }
+# Avatars go to Cloudflare R2. `providers` is what carries the `cloudflare_r2` endpoint preset; the
+# crate speaks plain S3 too, but R2 needs the right region and path style and getting those by hand
+# is a way to produce a URL that works for uploads and not for reads.
+
+[features]
+default = ["keyring"]
+# Without it the token is not stored at all, and `login` prints it once instead. The escape hatch is
+# for a system with no kernel keyring — a container without `CONFIG_KEYCTL`, some sandboxes.
+keyring = ["dep:keyutils"]
+legacy-auth-tests = []

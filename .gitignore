@@ -1,0 +1,9 @@
+# Carries build output. `target/` is the only thing here that is never wanted back.
+/target
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*~

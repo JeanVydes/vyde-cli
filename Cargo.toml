@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = ["core", "vyde"]
+
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+rust-version = "1.94"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+base64 = "0.22"
+sha2 = "0.10"
+urlencoding = "2"
+rand = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls-native-roots"] }
+futures = "0.3"
+async-trait = "0.1"
+
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
