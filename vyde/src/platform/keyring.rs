@@ -90,7 +90,33 @@ pub fn store_session(session: &Session) -> Result<Stored, CliError> {
 }
 
 /// Keep the token, or report that it has to be printed instead.
-#[cfg(not(feature = "keyring"))]
+#[cfg(all(not(feature = "keyring"), target_os = "macos"))]
+pub fn store(token: &str) -> Result<Stored, CliError> {
+    let account = std::env::var("USER").unwrap_or_else(|_| "vyde".to_owned());
+    let status = std::process::Command::new("/usr/bin/security")
+        .args([
+            "add-generic-password",
+            "-a",
+            &account,
+            "-s",
+            "vyde:session",
+            "-w",
+            token,
+            "-U",
+        ])
+        .status()
+        .map_err(|err| CliError::missing(format!("could not access the macOS Keychain: {err}")))?;
+    if status.success() {
+        Ok(Stored::InKeyring)
+    } else {
+        Err(CliError::missing(
+            "macOS Keychain rejected the session credential",
+        ))
+    }
+}
+
+#[cfg(all(not(feature = "keyring"), not(target_os = "macos")))]
+/// Report that this platform has no configured credential store.
 pub fn store(_token: &str) -> Result<Stored, CliError> {
     Ok(Stored::Printed)
 }
@@ -129,7 +155,29 @@ pub fn load() -> Option<String> {
 
     #[cfg(not(feature = "keyring"))]
     {
-        None
+        #[cfg(target_os = "macos")]
+        {
+            let account = std::env::var("USER").unwrap_or_else(|_| "vyde".to_owned());
+            return std::process::Command::new("/usr/bin/security")
+                .args([
+                    "find-generic-password",
+                    "-a",
+                    &account,
+                    "-s",
+                    "vyde:session",
+                    "-w",
+                ])
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .and_then(|output| String::from_utf8(output.stdout).ok())
+                .map(|value| value.trim_end().to_owned());
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            None
+        }
     }
 }
 
@@ -168,7 +216,26 @@ pub fn forget() -> bool {
 
     #[cfg(not(feature = "keyring"))]
     {
-        false
+        #[cfg(target_os = "macos")]
+        {
+            let account = std::env::var("USER").unwrap_or_else(|_| "vyde".to_owned());
+            return std::process::Command::new("/usr/bin/security")
+                .args([
+                    "delete-generic-password",
+                    "-a",
+                    &account,
+                    "-s",
+                    "vyde:session",
+                ])
+                .status()
+                .map(|status| status.success())
+                .unwrap_or(false);
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            false
+        }
     }
 }
 

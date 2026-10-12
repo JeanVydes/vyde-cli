@@ -26,7 +26,7 @@ sha2 = { workspace = true }
 urlencoding = { workspace = true }
 rand = { workspace = true }
 
-# The kernel keyring, for holding the session token.
+# The Linux kernel keyring, for holding the session token.
 #
 # This is the OS's own cryptographic store, and it is the right one for a credential with a short
 # life: it needs no daemon, nothing is written to disk in the clear, and the session keyring is
@@ -40,7 +40,7 @@ keyutils = { version = "0.4", optional = true }
 
 [features]
 default = ["keyring"]
-# Without it the token is not stored at all, and `login` prints it once instead. The escape hatch is
-# for a system with no kernel keyring — a container without `CONFIG_KEYCTL`, some sandboxes.
+# Without it, macOS uses the native Keychain and other platforms print the token once. The escape
+# hatch is for systems without a kernel keyring, such as containers without `CONFIG_KEYCTL`.
 keyring = ["dep:keyutils"]
 legacy-auth-tests = []
