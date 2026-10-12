@@ -51,6 +51,31 @@ pub struct HttpPlatform {
     base: String,
 }
 
+const CLI_METADATA_URL: &str = "https://docs.vyde.dev/.well-known/vyde-cli.json";
+
+#[derive(serde::Deserialize)]
+struct CliMetadata {
+    client_id: String,
+    redirect_uri: String,
+    scopes: Vec<String>,
+}
+
+fn validate_cli_metadata(metadata: CliMetadata) -> Result<String> {
+    if metadata.client_id.trim().is_empty()
+        || metadata.redirect_uri != "http://127.0.0.1:8675/callback"
+        || !metadata.scopes.iter().any(|scope| scope == "openid")
+        || !metadata
+            .scopes
+            .iter()
+            .any(|scope| scope == "offline_access")
+    {
+        return Err(CliError::malformed(
+            "CLI OAuth metadata has an invalid client configuration",
+        ));
+    }
+    Ok(metadata.client_id)
+}
+
 impl HttpPlatform {
     /// Build against `base`, which must include the scheme.
     ///
@@ -113,6 +138,41 @@ impl HttpPlatform {
         &self.http
     }
 
+    pub(crate) async fn oauth_client_id(&self) -> Result<String> {
+        let metadata_url = if cfg!(debug_assertions) {
+            std::env::var("VYDE_CLI_METADATA_URL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| CLI_METADATA_URL.to_owned())
+        } else {
+            CLI_METADATA_URL.to_owned()
+        };
+        let response =
+            self.http
+                .get(&metadata_url)
+                .send()
+                .await
+                .map_err(|err| CliError::Unreachable {
+                    base: metadata_url.clone(),
+                    reason: err.to_string(),
+                })?;
+        let status = response.status();
+        let body = response.text().await.map_err(|err| CliError::Unreachable {
+            base: metadata_url.clone(),
+            reason: err.to_string(),
+        })?;
+        if !status.is_success() {
+            return Err(CliError::refused(
+                status.as_u16(),
+                format!("could not load CLI OAuth metadata from {metadata_url}"),
+                Some("cli_metadata_failed".to_owned()),
+            ));
+        }
+        let metadata: CliMetadata = serde_json::from_str(&body)
+            .map_err(|err| CliError::malformed(format!("invalid CLI OAuth metadata: {err}")))?;
+        validate_cli_metadata(metadata)
+    }
+
     /// Return the configured web interface URL.
     pub fn ui_base(&self) -> String {
         std::env::var("VYDE_IDENTITY_UI_URL")
@@ -124,19 +184,6 @@ impl HttpPlatform {
                 } else {
                     "https://identity.vyde.dev".to_owned()
                 }
-            })
-    }
-
-    /// Public OAuth client used by the native CLI flow.
-    pub fn oauth_client_id(&self) -> Result<String> {
-        std::env::var("VYDE_OAUTH_CLIENT_ID")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| {
-                CliError::missing(
-                    "VYDE_OAUTH_CLIENT_ID is required; register the CLI as a public application \
-                     in the Identity console and set this variable to its generated client ID",
-                )
             })
     }
 
@@ -413,7 +460,7 @@ impl PlatformPort for HttpPlatform {
     }
 
     async fn refresh(&self, refresh_token: &str) -> Result<Session> {
-        let client_id = self.oauth_client_id()?;
+        let client_id = self.oauth_client_id().await?;
         let decoded: OAuthTokenDto = self
             .send(
                 self.http
@@ -563,5 +610,38 @@ impl PlatformPort for HttpPlatform {
     /// once — for the same reason the credential is.
     fn can_upload_photos(&self) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CliMetadata, validate_cli_metadata};
+
+    fn metadata() -> CliMetadata {
+        CliMetadata {
+            client_id: "cli-client".to_owned(),
+            redirect_uri: "http://127.0.0.1:8675/callback".to_owned(),
+            scopes: vec!["openid".to_owned(), "offline_access".to_owned()],
+        }
+    }
+
+    #[test]
+    fn accepts_valid_metadata() {
+        assert_eq!(validate_cli_metadata(metadata()).unwrap(), "cli-client");
+    }
+
+    #[test]
+    fn rejects_invalid_metadata_fields() {
+        let mut invalid = metadata();
+        invalid.client_id.clear();
+        assert!(validate_cli_metadata(invalid).is_err());
+
+        let mut invalid = metadata();
+        invalid.redirect_uri = "http://localhost/callback".to_owned();
+        assert!(validate_cli_metadata(invalid).is_err());
+
+        let mut invalid = metadata();
+        invalid.scopes = vec!["profile".to_owned()];
+        assert!(validate_cli_metadata(invalid).is_err());
     }
 }

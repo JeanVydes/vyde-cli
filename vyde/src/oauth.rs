@@ -62,7 +62,7 @@ async fn run_login(platform: &HttpPlatform) -> Result<Session> {
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let state = random_value();
     let redirect_uri = format!("http://127.0.0.1:{CALLBACK_PORT}/callback");
-    let client_id = platform.oauth_client_id()?;
+    let client_id = platform.oauth_client_id().await?;
     let mut url = reqwest::Url::parse(&format!("{}{}", platform.ui_base(), UI_PATH))
         .map_err(|err| CliError::malformed(format!("invalid interface URL: {err}")))?;
     url.query_pairs_mut()
@@ -105,6 +105,7 @@ async fn run_login(platform: &HttpPlatform) -> Result<Session> {
             Some("invalid_state".to_owned()),
         ));
     }
+
     if let Some(error) = callback.query_pairs().find(|(key, _)| key == "error") {
         return Err(CliError::refused(
             400,
